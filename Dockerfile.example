@@ -1,0 +1,20 @@
+FROM public.ecr.aws/lambda/python:3.12
+
+# Install gcc to compile the shim (or copy a pre-built .so instead)
+RUN dnf install -y gcc && dnf clean all
+
+# Build the shared memory shim
+COPY shm_redirect.c /opt/lib/
+RUN gcc -shared -fPIC -O2 -o /opt/lib/shm_redirect.so /opt/lib/shm_redirect.c -ldl -lpthread
+
+# Tell the dynamic linker to load our shim before glibc
+ENV LD_PRELOAD=/opt/lib/shm_redirect.so
+
+# Install your Python dependencies
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# Copy your Lambda function code
+COPY app.py .
+
+CMD ["app.handler"]

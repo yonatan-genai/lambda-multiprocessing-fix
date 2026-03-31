@@ -1,0 +1,49 @@
+name: Test shm_redirect
+
+on:
+  push:
+    paths:
+      - "lambda-shm/**"
+  pull_request:
+    paths:
+      - "lambda-shm/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build shim
+        working-directory: lambda-shm
+        run: make build
+
+      - name: Disable /dev/shm to simulate Lambda
+        run: |
+          sudo chmod 000 /dev/shm
+
+      - name: Verify multiprocessing fails without shim
+        working-directory: lambda-shm
+        run: |
+          # This should fail because /dev/shm is inaccessible
+          if python3 -c "import multiprocessing; multiprocessing.Lock()" 2>/dev/null; then
+            echo "ERROR: multiprocessing should have failed without shim"
+            exit 1
+          fi
+          echo "Confirmed: multiprocessing fails without /dev/shm (expected)"
+
+      - name: Run tests with shim
+        working-directory: lambda-shm
+        run: |
+          LD_PRELOAD=./shm_redirect.so python3 test_shm.py
+
+      - name: Restore /dev/shm
+        if: always()
+        run: |
+          sudo chmod 1777 /dev/shm
